@@ -6,6 +6,8 @@ const stat = promisify(fs.stat)
 const readdir = promisify(fs.readdir)
 const config = require('../config/defaultConf')
 const mime = require('./mime')
+const compress = require('./compress')
+const isFresh = require('./cache')
 
 const tplPath = path.join(__dirname, '../template/dir.tpl')
 const source = fs.readFileSync(tplPath)
@@ -17,9 +19,21 @@ module.exports = async function (req, res, filePath) {
         const stats = await stat(filePath)
         if(stats.isFile()) {
             const contentType = mime(filePath).contentType
+            if(isFresh(stats, req, res)) {
+                console.log('返回 304 了')
+                res.statusCode = 304
+                res.end()
+                return ;
+            }
+            console.log(isFresh(stats, req, res))
+            console.log('返回 200 了')
             res.statusCode = 200
             res.setHeader('Content-Type', contentType)
-            fs.createReadStream(filePath).pipe(res)
+            var rs = fs.createReadStream(filePath)
+            if(filePath.match(config.compress)) {
+                rs = compress(rs,req, res)
+            }
+            rs.pipe(res)
         } else if(stats.isDirectory()) {
             const files = await readdir(filePath)
             for (var i =0; i<files.length; i++){
